@@ -138,7 +138,7 @@ func main() {
 		rootHash := buildMerkleTree(data)
 		fmt.Println("Root hash", hex.EncodeToString(rootHash.Root.Value))
 	}
-	c := &MerkleNode{}
+	c := rootHash.Root
 	fmt.Println("node is present/not: ", c.verify("xyz"))
 
 }
