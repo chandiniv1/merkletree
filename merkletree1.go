@@ -139,6 +139,6 @@ func main() {
 		fmt.Println("Root hash", hex.EncodeToString(rootHash.Root.Value))
 	}
 	c := rootHash.Root
-	fmt.Println("node is present/not: ", c.verify("xyz"))
+	fmt.Println("node is present/not: ", c.verify("A"))
 
 }
