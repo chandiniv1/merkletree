@@ -15,44 +15,47 @@ type MerkleNode struct {
 	Left  *MerkleNode
 	Right *MerkleNode
 	Value []byte
+	Data  []byte
 }
 
 func buildMerkleNode(left *MerkleNode, right *MerkleNode, value []byte) *MerkleNode {
 
 	newNode := MerkleNode{}
 
+	// If node is a leafnode
 	if left == nil && right == nil {
 		hash := sha256.Sum256(value)
 		newNode.Value = hash[0:]
-	} else {
+	} else { // If node is not a leaf node
 		prevHashVal := append(left.Value, right.Value...)
 		hash := sha256.Sum256(prevHashVal)
 		newNode.Value = hash[0:]
 
 	}
 
+	// Update left, right nodes and data
 	newNode.Left = left
 	newNode.Right = right
+	newNode.Data = value
 
 	return &newNode
-
 }
 
 func buildMerkleTree(values [][]byte) *MerkleTree {
 	var newNodes []MerkleNode
-
+	// Create MerkleNode for each transaction
 	for _, v := range values {
 		newNode := buildMerkleNode(nil, nil, v)
 		newNodes = append(newNodes, *newNode)
 	}
 
 	for len(newNodes) > 1 {
-		//checking whether the length is even or not
+		// If odd number of transactions, duplicate last value
 		if len(newNodes)%2 == 1 {
 			newNodes = append(newNodes, newNodes[len(newNodes)-1])
 		}
 
-		//here we are changing every val in value into merkle node
+		// Find root hashes for each level
 		var parentHashes []MerkleNode
 		for i := 0; i < len(newNodes); i += 2 {
 			newNode := buildMerkleNode(&newNodes[i], &newNodes[i+1], nil)
@@ -61,40 +64,70 @@ func buildMerkleTree(values [][]byte) *MerkleTree {
 		newNodes = parentHashes
 	}
 
-	//fmt.Println("new node", newNodes)
-
+	// First node is the root node of merkle tree
 	tree := MerkleTree{&newNodes[0]}
 
 	return &tree
 }
 
-func AddNode(values []string) []string {
-	var newnode string
-	fmt.Println("enter the node you want to add")
-	fmt.Scanln(&newnode)
-	values = append(values, newnode)
-	return values
+func addNode(mTree *MerkleTree, data []byte) *MerkleTree {
+	newData := [][]byte{data}
+	newTree := buildMerkleTree(newData)
 
+	prevLevel := []*MerkleNode{mTree.Root, newTree.Root}
+
+	for len(prevLevel) > 1 {
+		newLevel := []*MerkleNode{}
+		// Calculate news hashes for each level
+		for i := 0; i < len(prevLevel); i += 2 {
+			node := buildMerkleNode(prevLevel[i], prevLevel[i+1], nil)
+			newLevel = append(newLevel, node)
+		}
+
+		prevLevel = newLevel
+	}
+	// First node is the root node of Merkle Tree
+	mTree.Root = prevLevel[0]
+	return mTree
 }
 
-func DeleteNode(Values []string) []string {
-	var deletednode string
-	flag := 0
-	fmt.Println("enter the node you want to delete")
-	fmt.Scanln(&deletednode)
-	for i := 0; i < len(Values); i++ {
-		if Values[i] == deletednode {
-			Values = append(Values[:i], Values[i+1:]...)
-			flag = 1
+func deleteNode(mTree *MerkleTree, data []byte) *MerkleTree {
+	// get all the data in the Merkle Tree
+	allData := mTree.getAllData()
+
+	// remove the data to be deleted
+	for i, d := range allData {
+		if string(d) == string(data) {
+			allData = append(allData[:i], allData[i+1:]...)
+			break
 		}
 	}
-	if flag == 0 {
-		fmt.Println("transaction not found")
-	}
-	return Values
+
+	// reconstructing Merkle Tree tree
+	mTree = buildMerkleTree(allData)
+	return mTree
 }
 
-func (root *MerkleNode) verify(data string) bool {
+func (mTree *MerkleTree) getAllData() [][]byte {
+	allData := [][]byte{}
+	getAllTransactions(mTree.Root, &allData)
+	return allData
+}
+
+func getAllTransactions(node *MerkleNode, allData *[][]byte) {
+	// data of node
+	if node.Left == nil && node.Right == nil {
+		*allData = append(*allData, node.Value)
+		return
+	}
+
+	// Left subtree
+	getAllTransactions(node.Left, allData)
+	// Right subtree
+	getAllTransactions(node.Right, allData)
+}
+
+func verify(root *MerkleNode, data string) bool {
 	var hash []byte
 	bytedata := []byte(data)
 	hash32 := sha256.Sum256(bytedata)
@@ -107,13 +140,17 @@ func VerifyNode(root *MerkleNode, target []byte) bool {
 		return false
 	}
 
+	// Return true if root value matches target
 	if bytes.Equal(root.Value, target) {
 		return true
 	}
+
 	var left, right bool
+	// If left mode exist
 	if root.Left != nil {
 		left = VerifyNode(root.Left, target)
 	}
+	// If right node exist
 	if root.Right != nil {
 		right = VerifyNode(root.Right, target)
 	}
@@ -121,24 +158,42 @@ func VerifyNode(root *MerkleNode, target []byte) bool {
 }
 
 func main() {
-	values := []string{"GeeksforGeeks", "A", "Computer", "Science", "Portal", "For", "Geeks"}
-	//values := []string{}
-	updatedvalues := AddNode(values)
-	DeleteNode(updatedvalues)
+	transactions := []string{"AB", "CDEF", "G", "HIJKL", "MNO", "PQRSTU", "VW"}
+
 	data := [][]byte{}
 
-	if len(updatedvalues) == 0 {
+	if len(transactions) == 0 {
 		fmt.Println("NO transactions")
 	} else {
-		for k, v := range updatedvalues {
-			_ = k
-			a := []byte(v)
-			data = append(data, a)
+		for i := 0; i < len(transactions); i++ {
+			data = append(data, []byte(transactions[i]))
 		}
-		rootHash := buildMerkleTree(data)
-		fmt.Println("Root hash", hex.EncodeToString(rootHash.Root.Value))
+
+		merkleRoot := buildMerkleTree(data)
+		fmt.Println("Root hash", hex.EncodeToString(merkleRoot.Root.Value))
+
+		if verify(merkleRoot.Root, "AB") {
+			fmt.Println("Found")
+		} else {
+			fmt.Println("Not Found")
+		}
+
+		merkleRoot = addNode(merkleRoot, []byte("XYZ"))
+		fmt.Println("Root hash", hex.EncodeToString(merkleRoot.Root.Value))
+
+		if verify(merkleRoot.Root, "XYZ") {
+			fmt.Println("Found")
+		} else {
+			fmt.Println("Not Found")
+		}
+
+		merkleRoot = deleteNode(merkleRoot, []byte("XYZ"))
+		fmt.Println("Root hash", hex.EncodeToString(merkleRoot.Root.Value))
+		if verify(merkleRoot.Root, "XYZ") {
+			fmt.Println("Found")
+		} else {
+			fmt.Println("Not Found")
+		}
 	}
-	c := rootHash.Root
-	fmt.Println("node is present/not: ", c.verify("A"))
 
 }
